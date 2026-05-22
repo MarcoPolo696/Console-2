@@ -10,9 +10,18 @@ import string
 import io
 from datetime import datetime, timedelta
 from mcstatus import JavaServer
+from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
-# ========================= CONFIG =========================
-TOKEN = "MTUwNDQ5MDIwNjk3ODM3NTgzMA.Gxs6Ot.q315baxceM0ul4-70WEgdsQpdmiKkNSGDefwiU"
+# ========================= CONFIG & ENV =========================
+load_dotenv()
+TOKEN = os.getenv("DISCORD_TOKEN")
+
+if not TOKEN:
+    print("❌ ERROR: No token found! Please make sure your DISCORD_TOKEN is set in your environment variables.")
+    exit()
+
 DATA_FILE = "bot_data.json"
 
 def load_data():
@@ -39,6 +48,21 @@ data = load_data()
 def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
+
+# ===================== KEEPALIVE SERVER =====================
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "🟢 Bot is alive and running!"
+
+def run():
+    # Runs the webserver on port 8080
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
 
 # ========================================================
 intents = discord.Intents.default()
@@ -113,7 +137,13 @@ async def auto_nitro_gen():
     if not channel: return
     
     code = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
-    await channel.send(f"🎁 **Auto Nitro Generator:**\nhttps://discord.gift/{code}")
+    
+    embed = discord.Embed(
+        title="🎁 Auto Nitro Generator", 
+        description=f"https://discord.gift/{code}", 
+        color=0xff73fa
+    )
+    await channel.send(embed=embed)
 
 # ===================== ALL ORIGINAL + ADDED COMMANDS =====================
 
@@ -418,12 +448,23 @@ async def genmcfa(ctx, amount: int = 1):
 
     try:
         if amount == 1:
-            await ctx.author.send(f"🎮 **Your MCFA Account:**\n`{accounts_to_send[0]}`\n\n*Please ensure you secure the account.*")
+            embed = discord.Embed(
+                title="🎮 Your MCFA Account", 
+                description=f"`{accounts_to_send[0]}`\n\n*Please ensure you secure the account.*", 
+                color=0x00ff00
+            )
+            await ctx.author.send(embed=embed)
         else:
             accounts_string = "\n".join(accounts_to_send)
             file_obj = io.BytesIO(accounts_string.encode('utf-8'))
             discord_file = discord.File(file_obj, filename="mcfa_accounts.txt")
-            await ctx.author.send(f"🎮 **Your {amount} MCFA Accounts are attached below!**", file=discord_file)
+            
+            embed = discord.Embed(
+                title="🎮 Your MCFA Accounts", 
+                description=f"Your **{amount}** requested MCFA accounts are attached to this message.", 
+                color=0x00ff00
+            )
+            await ctx.author.send(embed=embed, file=discord_file)
             
         await ctx.send(f"✅ {ctx.author.mention}, successfully generated! Check your Direct Messages.")
     except discord.Forbidden:
@@ -442,7 +483,12 @@ async def genrandommcfa(ctx):
     password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
     
     try:
-        await ctx.author.send(f"🎮 **Randomly Generated MCFA:**\n`{email}:{password}`\n\n*Note: This is a randomly generated format without a text file stock.*")
+        embed = discord.Embed(
+            title="🎮 Randomly Generated MCFA", 
+            description=f"`{email}:{password}`\n\n*Note: This is a randomly generated format without a text file stock.*", 
+            color=0x00ff00
+        )
+        await ctx.author.send(embed=embed)
         await ctx.send(f"✅ {ctx.author.mention}, successfully generated a random fake account! Check your DMs.")
     except discord.Forbidden:
         await ctx.send(f"❌ {ctx.author.mention}, DMs are disabled!")
@@ -459,7 +505,6 @@ async def setautonitro(ctx, channel: discord.TextChannel = None):
         save_data()
         await ctx.send(f"✅ Auto Nitro Generator set to {channel.mention} (Generates codes 24/7 every 20 seconds).")
 
-# Removed the @commands.has_permissions(administrator=True) so everyone can see the stock
 @bot.command(name="stock")
 async def stock(ctx):
     file_path = "mcfa.txt"
@@ -541,4 +586,6 @@ async def on_ready():
     check_tiktok.start()
     auto_nitro_gen.start()
 
+# Start the keep_alive server before running the bot
+keep_alive()
 bot.run(TOKEN)
