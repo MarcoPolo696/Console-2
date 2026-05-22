@@ -157,7 +157,7 @@ async def help_command(interaction: discord.Interaction):
     embed.add_field(name="📦 Generators (Public)", value="`.stock` - Check MCFA account stock", inline=False)
     
     embed.add_field(name="🛡️ Moderation (Admin/Mods)", value="`/purge` - Delete messages\n`/kick` - Kick member\n`/ban` - Ban member\n`/timeout` - Timeout member\n`/setchannel` - Set notifications\n`/addyt` - Add YouTube\n`/addtiktok` - Add TikTok\n`/ingame` - Set in-game status\n`/status` - Set bot presence", inline=False)
-    embed.add_field(name="🎁 Admin/Generator Tools", value="`.genmcfa` - Generate MCFA account(s)\n`.genrandommcfa` - Fake MCFA account\n`.setautonitro` - Auto Nitro drops\n`.addmcfa` - Add stock\n`.nitrochecker` - Check Nitro code\n`/pay` & `.pay` - Admin pay command", inline=False)
+    embed.add_field(name="🎁 Admin/Generator Tools", value="`.genmcfa` - Generate MCFA account(s)\n`.genrandommcfa` - MCFA account\n`.setautonitro` - Auto Nitro drops\n`.addmcfa` - Add stock\n`.nitrochecker` - Check Nitro code\n`/pay` & `.pay` - Admin pay command", inline=False)
     
     embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
     await interaction.response.send_message(embed=embed)
