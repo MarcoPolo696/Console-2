@@ -23,6 +23,7 @@ if not TOKEN:
     exit()
 
 DATA_FILE = "bot_data.json"
+MCFA_FILE = "mcfa.txt"
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -49,6 +50,21 @@ def save_data():
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+def load_stock():
+    """Safely loads stock and removes any blank lines."""
+    if not os.path.exists(MCFA_FILE):
+        with open(MCFA_FILE, "w") as f: f.write("")
+        return []
+    with open(MCFA_FILE, "r") as f:
+        return [line.strip() for line in f.readlines() if line.strip()]
+
+def save_stock(lines):
+    """Safely saves stock and prevents empty spaces."""
+    with open(MCFA_FILE, "w") as f:
+        for line in lines:
+            if line.strip():
+                f.write(line.strip() + "\n")
+
 # ===================== KEEPALIVE SERVER =====================
 app = Flask('')
 
@@ -57,7 +73,6 @@ def home():
     return "🟢 Bot is alive and running!"
 
 def run():
-    # Runs the webserver on port 8080
     app.run(host='0.0.0.0', port=8080)
 
 def keep_alive():
@@ -70,7 +85,7 @@ intents.message_content = True
 intents.members = True
 bot = commands.Bot(command_prefix=["!", "."], intents=intents)
 
-# Remove the default help command so we can create our own custom /help
+# Remove the default help command so we can implement our custom setups
 bot.remove_command("help")
 
 # ===================== HELPERS =====================
@@ -147,19 +162,17 @@ async def auto_nitro_gen():
 
 # ===================== ALL ORIGINAL + ADDED COMMANDS =====================
 
-@bot.tree.command(name="help", description="List all available bot commands")
+@bot.tree.command(name="help", description="List all available public bot commands")
 async def help_command(interaction: discord.Interaction):
-    embed = discord.Embed(title="📜 Bot Commands List", color=0x3498db, description="Here is a list of all commands available on this bot!")
+    embed = discord.Embed(title="📜 Bot Commands List", color=0x3498db, description="Here is a list of all public commands available on this bot!")
     
     embed.add_field(name="🛠️ Utility", value="`/ping` - Check latency\n`/userinfo` - User details\n`/serverinfo` - Server details\n`/serverstatus` - Check MC server\n`/avatar` - Get user avatar", inline=False)
     embed.add_field(name="💰 Economy", value="`/balance` - Check coins\n`/daily` - Claim daily reward\n`/work` - Work for coins\n`/shop` - View shop\n`/buy` - Buy item", inline=False)
     embed.add_field(name="🎲 Fun", value="`/8ball` - Magic 8ball\n`/hug` - Hug someone\n`/coinflip` - Flip a coin\n`/roll` - Roll a dice\n`/rps` - Play Rock, Paper, Scissors", inline=False)
     embed.add_field(name="📦 Generators (Public)", value="`.stock` - Check MCFA account stock", inline=False)
+    embed.add_field(name="🛡️ Moderation (Staff Only)", value="`/purge` - Delete messages\n`/kick` - Kick member\n`/ban` - Ban member\n`/timeout` - Timeout member", inline=False)
     
-    embed.add_field(name="🛡️ Moderation (Admin/Mods)", value="`/purge` - Delete messages\n`/kick` - Kick member\n`/ban` - Ban member\n`/timeout` - Timeout member\n`/setchannel` - Set notifications\n`/addyt` - Add YouTube\n`/addtiktok` - Add TikTok\n`/ingame` - Set in-game status\n`/status` - Set bot presence", inline=False)
-    embed.add_field(name="🎁 Admin/Generator Tools", value="`.genmcfa` - Generate MCFA account(s)\n`.genrandommcfa` - MCFA account\n`.setautonitro` - Auto Nitro drops\n`.addmcfa` - Add stock\n`.nitrochecker` - Check Nitro code\n`/pay` & `.pay` - Admin pay command", inline=False)
-    
-    embed.set_footer(text=f"Requested by {interaction.user}", icon_url=interaction.user.display_avatar.url)
+    embed.set_footer(text=f"Requested by {interaction.user} | Administrators use .help for generator tools", icon_url=interaction.user.display_avatar.url)
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="setchannel", description="Set notification channel")
@@ -193,23 +206,59 @@ async def ingame(interaction: discord.Interaction, status: str):
         await channel.send(f"🎮 **In-Game Status Updated**\n{status}")
     await interaction.response.send_message("✅ In-game status updated!", ephemeral=True)
 
+
+# ===================== UPDATED STATUS COMMAND =====================
 @bot.tree.command(name="status", description="Show or change bot status (Streaming Supported)")
 @app_commands.default_permissions(administrator=True)
-async def status(interaction: discord.Interaction, action: str = "show", activity_type: str = "watching", activity_name: str = "Servers", status_type: str = "dnd"):
-    if action.lower() == "set":
-        activity = None
-        at = activity_type.lower()
+@app_commands.choices(
+    action=[
+        app_commands.Choice(name="Show Status Menu", value="show"),
+        app_commands.Choice(name="Set Bot Presence", value="set")
+    ],
+    activity_type=[
+        app_commands.Choice(name="Playing", value="playing"),
+        app_commands.Choice(name="Watching", value="watching"),
+        app_commands.Choice(name="Listening", value="listening"),
+        app_commands.Choice(name="Streaming", value="streaming"),
+        app_commands.Choice(name="Competing", value="competing")
+    ],
+    status_type=[
+        app_commands.Choice(name="Online (Green)", value="online"),
+        app_commands.Choice(name="Idle (Moon)", value="idle"),
+        app_commands.Choice(name="Do Not Disturb (Red)", value="dnd"),
+        app_commands.Choice(name="Invisible (Offline)", value="invisible")
+    ]
+)
+async def status(
+    interaction: discord.Interaction, 
+    action: app_commands.Choice[str], 
+    activity_type: app_commands.Choice[str] = None, 
+    status_type: app_commands.Choice[str] = None,
+    activity_name: str = "Servers"
+):
+    act_val = action.value
+    
+    if act_val == "set":
+        at = activity_type.value if activity_type else "watching"
+        st = status_type.value if status_type else "dnd"
 
+        activity = None
         if at == "playing": activity = discord.Game(name=activity_name)
         elif at == "watching": activity = discord.Activity(type=discord.ActivityType.watching, name=activity_name)
         elif at == "listening": activity = discord.Activity(type=discord.ActivityType.listening, name=activity_name)
         elif at == "competing": activity = discord.Activity(type=discord.ActivityType.competing, name=activity_name)
         elif at == "streaming": activity = discord.Streaming(name=activity_name, url="https://twitch.tv/example")
 
-        status_dict = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
-        await bot.change_presence(status=status_dict.get(status_type.lower(), discord.Status.dnd), activity=activity)
+        status_dict = {
+            "online": discord.Status.online, 
+            "idle": discord.Status.idle, 
+            "dnd": discord.Status.dnd, 
+            "invisible": discord.Status.invisible
+        }
+        
+        await bot.change_presence(status=status_dict.get(st, discord.Status.dnd), activity=activity)
 
-        await interaction.response.send_message(f"✅ Status updated to {activity_type} {activity_name} | {status_type}", ephemeral=True)
+        await interaction.response.send_message(f"✅ Status updated to **{at.title()} {activity_name}** | **{st.upper()}**", ephemeral=True)
         return
 
     embed = discord.Embed(title="🤖 Bot Status", color=0x00ff00)
@@ -220,6 +269,8 @@ async def status(interaction: discord.Interaction, action: str = "show", activit
     embed.add_field(name="In-Game Status", value=data["current_ingame_status"], inline=False)
 
     await interaction.response.send_message(embed=embed)
+# ==================================================================
+
 
 # ===================== ECONOMY & MORE =====================
 
@@ -301,24 +352,6 @@ async def eightball(interaction: discord.Interaction, question: str):
 @bot.tree.command(name="hug", description="Hug someone")
 async def hug(interaction: discord.Interaction, member: discord.Member):
     await interaction.response.send_message(f"{interaction.user.mention} hugged {member.mention} 🤗")
-
-@bot.tree.command(name="pay", description="Pay coins to another user")
-@app_commands.default_permissions(administrator=True)
-async def pay_slash(interaction: discord.Interaction, member: discord.Member, amount: int):
-    if amount <= 0:
-        return await interaction.response.send_message("❌ Amount must be greater than 0.")
-    
-    sender = get_balance(interaction.user.id)
-    if sender["balance"] < amount:
-        return await interaction.response.send_message("❌ You don't have enough coins!")
-        
-    receiver = get_balance(member.id)
-    sender["balance"] -= amount
-    receiver["balance"] += amount
-    
-    save_balance(interaction.user.id, sender)
-    save_balance(member.id, receiver)
-    await interaction.response.send_message(f"💸 You successfully paid **{amount}** coins to {member.mention}!")
 
 @bot.tree.command(name="shop", description="View the shop")
 async def shop(interaction: discord.Interaction):
@@ -419,8 +452,53 @@ async def timeout(interaction: discord.Interaction, member: discord.Member, minu
     except discord.Forbidden:
         await interaction.response.send_message("❌ I do not have permission to timeout this member. Ensure my role is higher than theirs.", ephemeral=True)
 
+@bot.tree.command(name="pay", description="Pay/Send an MCFA account or Nitro link to a member")
+@app_commands.default_permissions(administrator=True)
+@app_commands.choices(item_type=[
+    app_commands.Choice(name="MCFA Account", value="mcfa"),
+    app_commands.Choice(name="Nitro Link", value="nitro")
+])
+async def pay_slash(interaction: discord.Interaction, member: discord.Member, item_type: app_commands.Choice[str]):
+    await interaction.response.defer(ephemeral=True)
+    choice = item_type.value
+
+    if choice == "mcfa":
+        lines = load_stock()
+        if not lines:
+            return await interaction.followup.send("❌ Out of stock! Cannot pay MCFA account.", ephemeral=True)
+            
+        account = lines.pop(0)
+        save_stock(lines)
+        
+        try:
+            embed = discord.Embed(title="🎮 Paid MCFA Payout", description=f"`{account}`\n\n*Secured via Administrator transfer.*", color=0x00ff00)
+            await member.send(embed=embed)
+            await interaction.followup.send(f"✅ Successfully sent 1 MCFA account to {member.mention} via DMs.", ephemeral=True)
+        except discord.Forbidden:
+            lines = [account] + lines
+            save_stock(lines)
+            await interaction.followup.send(f"❌ Could not DM {member.mention}. Item returned to stock.", ephemeral=True)
+
+    elif choice == "nitro":
+        code = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        try:
+            embed = discord.Embed(title="🎁 Paid Nitro Payout", description=f"https://discord.gift/{code}\n\n*Generated via Administrator transfer.*", color=0xff73fa)
+            await member.send(embed=embed)
+            await interaction.followup.send(f"✅ Successfully sent 1 Nitro link to {member.mention} via DMs.", ephemeral=True)
+        except discord.Forbidden:
+            await interaction.followup.send(f"❌ Could not DM {member.mention} as their privacy configurations block messages.", ephemeral=True)
+
 
 # ===================== PREFIX COMMANDS (. / !) =====================
+
+@bot.command(name="help")
+@commands.has_permissions(administrator=True)
+async def help_prefix(ctx):
+    embed = discord.Embed(title="🛠️ Admin Generator Management Menu", color=0xe74c3c, description="Secret management interface for system administrators.")
+    embed.add_field(name="📦 Generation Tools", value="`.genmcfa [amount]` - Extract accounts from local stock file\n`.genrandommcfa` - Create standard dummy credentials\n`.setautonitro [#channel]` - Launch or stall continuous automatic generation loop", inline=False)
+    embed.add_field(name="🔧 Inventory & Controls", value="`.addmcfa [pasted lines / text file]` - Input accounts directly into database file\n`.pay [@user] [mcfa/nitro]` - Securely dispatch items to targeted user inbox\n`.nitrochecker [code]` - Query Discord API processing status", inline=False)
+    embed.set_footer(text=f"Authorized Management Interface | Session: {ctx.author}", icon_url=ctx.author.display_avatar.url)
+    await ctx.send(embed=embed)
 
 @bot.command(name="genmcfa")
 @commands.has_permissions(administrator=True)
@@ -428,68 +506,42 @@ async def genmcfa(ctx, amount: int = 1):
     if amount <= 0:
         return await ctx.send("❌ Amount must be at least 1.")
         
-    file_path = "mcfa.txt"
-    
-    if not os.path.exists(file_path):
-        with open(file_path, "w") as f:
-            f.write("")
-
-    with open(file_path, "r") as f:
-        lines = [line for line in f.readlines() if line.strip()]
+    lines = load_stock()
 
     if len(lines) < amount:
-        return await ctx.send(f"❌ **Not enough stock!** Requested: {amount}, Available: {len(lines)}. Use `.stock` to view current supply.")
+        return await ctx.send(f"❌ **Not enough stock!** Requested: {amount}, Available: {len(lines)}.")
 
-    # Pop the requested amount of accounts
-    accounts_to_send = [lines.pop(0).strip() for _ in range(amount)]
-
-    with open(file_path, "w") as f:
-        f.writelines([line + "\n" for line in lines])
+    accounts_to_send = [lines.pop(0) for _ in range(amount)]
+    save_stock(lines)
 
     try:
         if amount == 1:
-            embed = discord.Embed(
-                title="🎮 Your MCFA Account", 
-                description=f"`{accounts_to_send[0]}`\n\n*Please ensure you secure the account.*", 
-                color=0x00ff00
-            )
+            embed = discord.Embed(title="🎮 Your MCFA Account", description=f"`{accounts_to_send[0]}`\n\n*Please ensure you secure the account.*", color=0x00ff00)
             await ctx.author.send(embed=embed)
         else:
             accounts_string = "\n".join(accounts_to_send)
             file_obj = io.BytesIO(accounts_string.encode('utf-8'))
             discord_file = discord.File(file_obj, filename="mcfa_accounts.txt")
-            
-            embed = discord.Embed(
-                title="🎮 Your MCFA Accounts", 
-                description=f"Your **{amount}** requested MCFA accounts are attached to this message.", 
-                color=0x00ff00
-            )
+            embed = discord.Embed(title="🎮 Your MCFA Accounts", description=f"Your **{amount}** requested MCFA accounts are attached to this message.", color=0x00ff00)
             await ctx.author.send(embed=embed, file=discord_file)
             
         await ctx.send(f"✅ {ctx.author.mention}, successfully generated! Check your Direct Messages.")
     except discord.Forbidden:
-        # Put accounts back in stock if DMs fail
-        lines = [acc + "\n" for acc in accounts_to_send] + lines
-        with open(file_path, "w") as f:
-            f.writelines(lines)
-        await ctx.send(f"❌ {ctx.author.mention}, I couldn't send you a DM! Please enable Direct Messages from server members and try again.")
+        lines = accounts_to_send + lines
+        save_stock(lines)
+        await ctx.send(f"❌ {ctx.author.mention}, I couldn't send you a DM! Please unlock your configuration parameters.")
 
 @bot.command(name="genrandommcfa")
 @commands.has_permissions(administrator=True)
 async def genrandommcfa(ctx):
-    """Generates a random formatted MCFA without needing the text file."""
     domains = ["gmail.com", "yahoo.com", "hotmail.com", "outlook.com"]
     email = f"{''.join(random.choices(string.ascii_lowercase + string.digits, k=8))}@{random.choice(domains)}"
     password = ''.join(random.choices(string.ascii_letters + string.digits, k=12))
     
     try:
-        embed = discord.Embed(
-            title="🎮 Randomly Generated MCFA", 
-            description=f"`{email}:{password}`\n\n*Note: This is a randomly generated format without a text file stock.*", 
-            color=0x00ff00
-        )
+        embed = discord.Embed(title="🎮 Randomly Generated MCFA", description=f"`{email}:{password}`\n\n*Note: Generated simulation for testing purposes.*", color=0x00ff00)
         await ctx.author.send(embed=embed)
-        await ctx.send(f"✅ {ctx.author.mention}, successfully generated a random fake account! Check your DMs.")
+        await ctx.send(f"✅ {ctx.author.mention}, simulation generated! Check your DMs.")
     except discord.Forbidden:
         await ctx.send(f"❌ {ctx.author.mention}, DMs are disabled!")
 
@@ -507,66 +559,89 @@ async def setautonitro(ctx, channel: discord.TextChannel = None):
 
 @bot.command(name="stock")
 async def stock(ctx):
-    file_path = "mcfa.txt"
-    stock_count = 0
-    
-    if os.path.exists(file_path):
-        with open(file_path, "r") as f:
-            stock_count = len([line for line in f.readlines() if line.strip()])
+    lines = load_stock()
+    stock_count = len(lines)
     
     embed_color = 0x00ff00 if stock_count > 0 else 0xff0000
     embed = discord.Embed(title="📦 Generator Stock", color=embed_color)
     embed.add_field(name="Minecraft Full Access (MCFA)", value=f"**{stock_count}** accounts available", inline=False)
     embed.set_footer(text=f"Requested by {ctx.author}", icon_url=ctx.author.display_avatar.url)
-    
     await ctx.send(embed=embed)
 
 @bot.command(name="addmcfa", aliases=["addstock"])
 @commands.has_permissions(administrator=True)
-async def addmcfa(ctx, *, accounts: str):
-    file_path = "mcfa.txt"
-    # Splits by lines or spaces to allow bulk adding
-    new_accounts = accounts.split()
-    
-    with open(file_path, "a") as f:
-        for acc in new_accounts:
-            if acc.strip():
-                f.write(acc.strip() + "\n")
+async def addmcfa(ctx, *, accounts: str = None):
+    new_accounts = []
+
+    if accounts:
+        new_accounts.extend(accounts.split())
+
+    if ctx.message.attachments:
+        for attachment in ctx.message.attachments:
+            if attachment.filename.endswith('.txt'):
+                try:
+                    file_bytes = await attachment.read()
+                    file_content = file_bytes.decode('utf-8')
+                    new_accounts.extend(file_content.split())
+                except Exception as e:
+                    await ctx.send(f"⚠️ Error reading file `{attachment.filename}`: {e}")
+
+    if not new_accounts:
+        return await ctx.send("❌ No valid stock items found! Provide standard text or attach a valid `.txt` log file.")
+
+    lines = load_stock()
+    lines.extend(new_accounts)
+    save_stock(lines)
                 
-    await ctx.send(f"✅ Successfully added **{len(new_accounts)}** accounts to the stock!")
+    await ctx.send(f"✅ Successfully scanned and parsed **{len(new_accounts)}** item structures into stock files.")
 
 @bot.command(name="pay")
 @commands.has_permissions(administrator=True)
-async def pay_prefix(ctx, member: discord.Member, amount: int):
-    if amount <= 0:
-        return await ctx.send("❌ Amount must be greater than 0.")
+async def pay_prefix(ctx, member: discord.Member, item_type: str):
+    choice = item_type.lower()
     
-    sender = get_balance(ctx.author.id)
-    if sender["balance"] < amount:
-        return await ctx.send("❌ You don't have enough coins!")
-        
-    receiver = get_balance(member.id)
-    sender["balance"] -= amount
-    receiver["balance"] += amount
-    
-    save_balance(ctx.author.id, sender)
-    save_balance(member.id, receiver)
-    await ctx.send(f"💸 You successfully paid **{amount}** coins to {member.mention}!")
+    if choice == "mcfa":
+        lines = load_stock()
+        if not lines:
+            return await ctx.send("❌ Out of stock! Cannot dispense MCFA item.")
+            
+        account = lines.pop(0)
+        save_stock(lines)
+            
+        try:
+            embed = discord.Embed(title="🎮 Paid MCFA Payout", description=f"`{account}`\n\n*Secured via Administrator transfer.*", color=0x00ff00)
+            await member.send(embed=embed)
+            await ctx.send(f"✅ Dispatch success! 1 MCFA distributed safely to {member.mention}.")
+        except discord.Forbidden:
+            lines = [account] + lines
+            save_stock(lines)
+            await ctx.send(f"❌ Failed transfer: {member.mention} has blocked direct interaction pathways.")
+
+    elif choice == "nitro":
+        code = ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+        try:
+            embed = discord.Embed(title="🎁 Paid Nitro Payout", description=f"https://discord.gift/{code}\n\n*Generated via Administrator transfer.*", color=0xff73fa)
+            await member.send(embed=embed)
+            await ctx.send(f"✅ Dispatch success! 1 Nitro link distributed safely to {member.mention}.")
+        except discord.Forbidden:
+            await ctx.send(f"❌ Failed transfer: Could not transmit to {member.mention} inbox parameters.")
+    else:
+        await ctx.send("❌ Invalid payload option! Choose between: `mcfa` or `nitro`.")
 
 @bot.command(name="nitrochecker", aliases=["checknitro"])
 @commands.has_permissions(administrator=True)
 async def nitrochecker(ctx, code: str):
     clean_code = code.replace("https://discord.gift/", "").replace("discord.gift/", "").replace("http://discord.gift/", "").strip()
-    url = f"https://discordapp.com/api/v9/entitlements/gift-codes/{clean_code}?with_application=false&with_subscription_plan=true"
+    url = f"https://discordapp.com/api/v9/entitlements/gift-codes/{clean_code}?with_application=false&with_subscription=true"
     
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as resp:
             if resp.status == 200:
-                data = await resp.json()
-                plan_name = data.get("subscription_plan", {}).get("name", "Nitro")
+                res_data = await resp.json()
+                plan_name = res_data.get("subscription_plan", {}).get("name", "Nitro")
                 await ctx.send(f"✅ **Valid Code!**\n**Plan:** {plan_name}\n**Code:** `{clean_code}`")
             elif resp.status == 429:
-                await ctx.send("⚠️ **Rate Limited!** Discord's API is blocking the requests. Please try again later.")
+                await ctx.send("⚠️ **Rate Limited!** Discord API throttling is blockading further network requests.")
             else:
                 await ctx.send(f"❌ **Invalid or Claimed Code:** `{clean_code}`")
 
@@ -586,6 +661,5 @@ async def on_ready():
     check_tiktok.start()
     auto_nitro_gen.start()
 
-# Start the keep_alive server before running the bot
 keep_alive()
 bot.run(TOKEN)
