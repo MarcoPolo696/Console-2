@@ -47,7 +47,7 @@ DAILY_COOLDOWNS = load_data("cooldowns.json", {})
 # =========================
 # PERMISSION SYSTEM
 # =========================
-OWNER_IDS = [1192047136192352256]
+OWNER_IDS = [1192047136192352256, 1334881324414271602, 1515362345705148491]
 
 def is_owner(user_id):
     return user_id in OWNER_IDS
