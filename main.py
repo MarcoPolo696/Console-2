@@ -21,7 +21,7 @@ PRODUCTS = {
     "mvp": {"name": "MVP Rank", "type": "rank", "price": 250, "rank_order": 2},
     "legend": {"name": "Legend Rank", "type": "rank", "price": 500, "rank_order": 3},
     "nitro": {"name": "Discord Nitro", "type": "gift", "price": 300, "rank_order": 99},
-    "mcfa": {"name": "MCFA Account", "type": "digital", "price": 150, "rank_order": 99}
+    "mcfa": {"name": "MCFA Account", "type": "digital", "price": 150, "rank_order": 100}
 }
 
 OWNER_IDS = [1192047136192352256, 1334881324414271602, 1515362345705148491]
